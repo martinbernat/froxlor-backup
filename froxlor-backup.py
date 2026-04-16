@@ -429,6 +429,7 @@ def transfer_rsync_ssh(local_dir: Path, remote_cfg: dict) -> bool:
         "--partial",
         "--human-readable",
         "--timeout=120",
+        "--chmod=D700,F600",   # enforce o=0 on remote regardless of remote umask
         f"--rsh=ssh {ssh_opts}",
     ] + extra_args + [
         str(local_dir) + "/",
@@ -452,6 +453,8 @@ def transfer_rclone(local_dir: Path, remote_cfg: dict) -> bool:
     dest = f"{rclone_remote}:{remote_path}"
     LOG.info("Transferring to %s (rclone) ...", dest)
 
+    # S3/B2/GCS: objects are private by default (ACL-based, Unix perms don't apply).
+    # SFTP: add "--sftp-umask=077" to rclone_extra_args in config.yaml to enforce o=0.
     cmd = ["rclone", "sync", "--progress", "--stats-one-line"]
     if config_file:
         cmd += ["--config", config_file]
@@ -680,6 +683,12 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    # Strip all permissions from group and other for every file/dir created by this
+    # process and its subprocesses (tar, gzip).  Dirs → 700, files → 600.
+    # Must be set before the first mkdir/open call.
+    os.umask(0o077)
+
     cfg = load_config(args.config)
     setup_logging(cfg, args.verbose)
 
