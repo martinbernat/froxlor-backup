@@ -569,12 +569,27 @@ def send_notification(cfg: dict, subject: str, body: str):
         msg["To"] = ntf["email_to"]
         msg.set_content(body)
 
-        if ntf.get("smtp_tls"):
-            import ssl
-            ctx = ssl.create_default_context()
-            smtp = smtplib.SMTP_SSL(ntf.get("smtp_host", "localhost"), int(ntf.get("smtp_port", 465)), context=ctx)
+        host = ntf.get("smtp_host", "localhost")
+        port = int(ntf.get("smtp_port", 25))
+        # smtp_tls accepts three values:
+        #   "ssl"      – direct TLS from the first byte (port 465 / SMTPS)
+        #   "starttls" – plain connect, then upgrade via STARTTLS (port 587)
+        #   false      – plain, no encryption (port 25, local relay)
+        # Legacy bool true is treated as "ssl" for backwards compatibility.
+        tls_mode = str(ntf.get("smtp_tls", "false")).lower()
+        if tls_mode == "true":
+            tls_mode = "ssl"
+
+        import ssl as _ssl
+        if tls_mode == "ssl":
+            ctx = _ssl.create_default_context()
+            smtp = smtplib.SMTP_SSL(host, port, context=ctx)
+        elif tls_mode == "starttls":
+            ctx = _ssl.create_default_context()
+            smtp = smtplib.SMTP(host, port)
+            smtp.starttls(context=ctx)
         else:
-            smtp = smtplib.SMTP(ntf.get("smtp_host", "localhost"), int(ntf.get("smtp_port", 25)))
+            smtp = smtplib.SMTP(host, port)
 
         if ntf.get("smtp_user"):
             smtp.login(ntf["smtp_user"], ntf["smtp_password"])

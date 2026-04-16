@@ -94,6 +94,10 @@ notifications:
   smtp_port: 25
   smtp_user: null
   smtp_password: null
+  # smtp_tls:
+  #   false     – plain, no encryption          (port 25,  local relay)
+  #   starttls  – plain connect, then STARTTLS  (port 587, most providers)
+  #   ssl       – direct TLS from first byte    (port 465, SMTPS)
   smtp_tls: false
   on_error: true     # pošli mail pri chybe
   on_success: false  # pošli mail po úspešnej zálohe
