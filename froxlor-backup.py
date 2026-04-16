@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-froxlor-backup  –  Automatic per-domain backup for the Froxlor hosting panel
+froxlor-backup  -  Automatic per-domain backup for the Froxlor hosting panel
 Backs up: web files, mailboxes, MySQL dumps, logs
 Transfer: rsync+SSH or rclone (S3, SFTP, Backblaze B2, ...)
 Retention: daily / weekly / monthly
@@ -150,7 +150,7 @@ def get_customer_databases(conn, customerid: int) -> list:
 
 
 # ─────────────────────────────────────────────────────────────
-# Backup – web
+# Backup - web
 # ─────────────────────────────────────────────────────────────
 
 def backup_web(domain: dict, backup_dir: Path, cfg: dict) -> bool:
@@ -197,7 +197,7 @@ def backup_web(domain: dict, backup_dir: Path, cfg: dict) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────
-# Backup – mail
+# Backup - mail
 # ─────────────────────────────────────────────────────────────
 
 def backup_mail(domain: dict, mail_accounts: list, backup_dir: Path) -> bool:
@@ -242,7 +242,7 @@ def backup_mail(domain: dict, mail_accounts: list, backup_dir: Path) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────
-# Backup – logs
+# Backup - logs
 # ─────────────────────────────────────────────────────────────
 
 def backup_logs(domain: dict, backup_dir: Path, cfg: dict) -> bool:
@@ -284,7 +284,7 @@ def backup_logs(domain: dict, backup_dir: Path, cfg: dict) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────
-# Backup – databases
+# Backup - databases
 # ─────────────────────────────────────────────────────────────
 
 def find_mysqldump() -> Optional[str]:
@@ -572,9 +572,9 @@ def send_notification(cfg: dict, subject: str, body: str):
         host = ntf.get("smtp_host", "localhost")
         port = int(ntf.get("smtp_port", 25))
         # smtp_tls accepts three values:
-        #   "ssl"      – direct TLS from the first byte (port 465 / SMTPS)
-        #   "starttls" – plain connect, then upgrade via STARTTLS (port 587)
-        #   false      – plain, no encryption (port 25, local relay)
+        #   "ssl"      - direct TLS from the first byte (port 465 / SMTPS)
+        #   "starttls" - plain connect, then upgrade via STARTTLS (port 587)
+        #   false      - plain, no encryption (port 25, local relay)
         # Legacy bool true is treated as "ssl" for backwards compatibility.
         tls_mode = str(ntf.get("smtp_tls", "false")).lower()
         if tls_mode == "true":
@@ -680,7 +680,7 @@ def backup_customer_databases(conn, customer: dict, backup_base: Path, cfg: dict
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="froxlor-backup – automatic per-domain/per-customer backup"
+        description="froxlor-backup - automatic per-domain/per-customer backup"
     )
     p.add_argument("--config", default="/etc/froxlor-backup/config.yaml",
                    help="Path to the configuration file")
@@ -709,7 +709,7 @@ def main():
 
     LOG.info("═══ froxlor-backup %s ═══", VERSION)
     if args.dry_run:
-        LOG.info("MODE: DRY-RUN – no changes will be written to disk")
+        LOG.info("MODE: DRY-RUN - no changes will be written to disk")
 
     backup_base = Path(cfg.get("local_backup_dir", "/var/backups/froxlor-backup"))
     backup_base.mkdir(parents=True, exist_ok=True)
@@ -733,11 +733,11 @@ def main():
             errs = backup_domain(conn, domain, backup_base, cfg, args.dry_run)
             all_errors.extend(errs)
         except Exception as e:
-            msg = f"{domain['domain']}: unexpected error – {e}"
+            msg = f"{domain['domain']}: unexpected error - {e}"
             LOG.exception(msg)
             all_errors.append(msg)
 
-        # Databases – once per customer
+        # Databases - once per customer
         if cfg["backup"].get("databases", True):
             cid = domain["customerid"]
             if cid not in backed_customers:
@@ -746,7 +746,7 @@ def main():
                     errs = backup_customer_databases(conn, domain, backup_base, cfg, args.dry_run)
                     all_errors.extend(errs)
                 except Exception as e:
-                    msg = f"{domain['loginname']} (DB): unexpected error – {e}"
+                    msg = f"{domain['loginname']} (DB): unexpected error - {e}"
                     LOG.exception(msg)
                     all_errors.append(msg)
 

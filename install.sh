@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# froxlor-backup – inštalačný skript
+# froxlor-backup - inštalačný skript
 # Spusti ako root: sudo bash install.sh
 # ============================================================
 set -euo pipefail
@@ -53,7 +53,7 @@ else
 fi
 
 # ── 2. Skripty ──
-# Adresár čitateľný/spustiteľný len rootom – skripty neobsahujú credentials,
+# Adresár čitateľný/spustiteľný len rootom - skripty neobsahujú credentials,
 # ale nie je dôvod aby ich čítal ktokoľvek iný.
 echo "→ Kopírujem skripty do ${INSTALL_DIR} ..."
 secure_dir "$INSTALL_DIR" root:root 700
@@ -66,14 +66,14 @@ secure_file "$INSTALL_DIR/froxlor-backup.py"   root:root 700
 secure_file "$INSTALL_DIR/froxlor-restore.py"  root:root 700
 secure_file "$INSTALL_DIR/config.yaml.example" root:root 640  # čitateľný root-om, skupina nepotrebuje
 
-# Symlinky v /usr/local/bin – samotný symlink nemá vlastné perms,
+# Symlinky v /usr/local/bin - samotný symlink nemá vlastné perms,
 # bezpečnosť je daná targetom (700 vyššie).
 ln -sf "$INSTALL_DIR/froxlor-backup.py"  /usr/local/bin/froxlor-backup
 ln -sf "$INSTALL_DIR/froxlor-restore.py" /usr/local/bin/froxlor-restore
 
 # ── 3. Konfigurácia ──
 # /etc/froxlor-backup/  →  root:root 700  (iní používatelia adresár ani nevidia)
-# config.yaml           →  root:root 600  (credentials pre DB + remote – len root)
+# config.yaml           →  root:root 600  (credentials pre DB + remote - len root)
 echo "→ Konfiguračný adresár: ${CONFIG_DIR} ..."
 secure_dir "$CONFIG_DIR" root:root 700
 
@@ -87,24 +87,24 @@ if [[ ! -f "${CONFIG_DIR}/config.yaml" ]]; then
     echo "  └─────────────────────────────────────────────────────┘"
     echo ""
 else
-    # Aj pri reinštalácii oprav perms – config mohol zostať so zlými právami
+    # Aj pri reinštalácii oprav perms - config mohol zostať so zlými právami
     secure_file "${CONFIG_DIR}/config.yaml" root:root 600
     echo "  Konfigurácia už existuje, perms opravené (600 root:root)."
 fi
 
 # ── 4. Zálohovací adresár ──
-# 700 root:root – zálohy môžu obsahovať citlivé dáta zákazníkov
+# 700 root:root - zálohy môžu obsahovať citlivé dáta zákazníkov
 echo "→ Zálohovací adresár: ${BACKUP_DIR} ..."
 secure_dir "$BACKUP_DIR" root:root 700
 
 # ── 5. Log súbor ──
-# 600 root:root – logy môžu obsahovať názvy domén, cesty, chybové hlášky s DB menami
+# 600 root:root - logy môžu obsahovať názvy domén, cesty, chybové hlášky s DB menami
 touch "$LOG_FILE"
 secure_file "$LOG_FILE" root:root 600
 
 # ── 6. SSH kľúč pre backup server ──
 # /root/.ssh musí byť 700 (SSH to inak odmietne použiť)
-# Privátny kľúč musí byť 600 – SSH to vyžaduje a odmietne 640/644
+# Privátny kľúč musí byť 600 - SSH to vyžaduje a odmietne 640/644
 secure_dir /root/.ssh root:root 700
 
 if [[ ! -f "${SSH_KEY}" ]]; then
@@ -122,7 +122,7 @@ if [[ ! -f "${SSH_KEY}" ]]; then
     echo "  Nezabudni v config.yaml nastaviť: key_file: ${SSH_KEY}"
     echo ""
 else
-    # Reinštalácia – oprav prípadné zlé perms existujúceho kľúča
+    # Reinštalácia - oprav prípadné zlé perms existujúceho kľúča
     secure_file "${SSH_KEY}"     root:root 600
     secure_file "${SSH_KEY}.pub" root:root 644
     echo "→ SSH kľúč už existuje: ${SSH_KEY}  (perms opravené)"
@@ -130,7 +130,7 @@ fi
 
 # ── 7. Systemd jednotky ──
 # Service + timer súbory: 644 root:root
-# systemd ich číta ako root, ale číta ich aj systemd-analyze bežiaci ako bežný user –
+# systemd ich číta ako root, ale číta ich aj systemd-analyze bežiaci ako bežný user -
 # 644 je štandard pre /etc/systemd/system/*.
 echo "→ Inštalácia systemd timera ..."
 cp froxlor-backup.service /etc/systemd/system/

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-froxlor-restore  –  Interactive restore of a Froxlor domain/customer backup
+froxlor-restore  -  Interactive restore of a Froxlor domain/customer backup
 
 Usage:
   froxlor-restore.py [--config /etc/froxlor-backup/config.yaml]
@@ -522,7 +522,7 @@ def interactive_restore(backup_base: Path, cfg: dict,
     db_entities = [k for k in all_entities if backups[k]["type"] == "databases"]
 
     if pre_domain:
-        # Direct selection via CLI argument – try domain first, then db slug
+        # Direct selection via CLI argument - try domain first, then db slug
         if pre_domain in backups:
             chosen_entity = pre_domain
         elif f"_db_{pre_domain}" in backups:
@@ -660,7 +660,7 @@ def interactive_restore(backup_base: Path, cfg: dict,
 
 def main():
     p = argparse.ArgumentParser(
-        description="froxlor-restore – interactive backup restore"
+        description="froxlor-restore - interactive backup restore"
     )
     p.add_argument("--config", default="/etc/froxlor-backup/config.yaml")
     p.add_argument("--domain",    help="Pre-select domain or customer (skips menu)")
@@ -670,7 +670,7 @@ def main():
     p.add_argument("--list",      action="store_true",
                    help="List available backups and exit")
     p.add_argument("--dry-run",   action="store_true",
-                   help="Simulate restore – no files will be overwritten")
+                   help="Simulate restore - no files will be overwritten")
     args = p.parse_args()
 
     if not os.path.exists(args.config):
