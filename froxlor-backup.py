@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-froxlor-backup  –  Automatické zálohovanie per-domain pre Froxlor hosting panel
-Zálohy: web súbory, mailboxy, MySQL dumpy, logy
-Prenos: rsync+SSH alebo rclone (S3, SFTP, Backblaze B2, ...)
-Retencia: denná / týždenná / mesačná
+froxlor-backup  –  Automatic per-domain backup for the Froxlor hosting panel
+Backs up: web files, mailboxes, MySQL dumps, logs
+Transfer: rsync+SSH or rclone (S3, SFTP, Backblaze B2, ...)
+Retention: daily / weekly / monthly
 
-Použitie:
+Usage:
   froxlor-backup.py [--config /etc/froxlor-backup/config.yaml]
                     [--domain example.com | --customer web1]
                     [--skip-transfer] [--dry-run] [--verbose]
 
-Požiadavky (pip):
+Requirements (pip):
   pip install PyMySQL PyYAML
 """
 
@@ -33,7 +33,7 @@ try:
     import pymysql
     import yaml
 except ImportError:
-    print("Chýbajú závislosti: pip install PyMySQL PyYAML", file=sys.stderr)
+    print("Missing dependencies: pip install PyMySQL PyYAML", file=sys.stderr)
     sys.exit(1)
 
 VERSION = "1.0.0"
@@ -41,7 +41,7 @@ LOG = logging.getLogger("froxlor-backup")
 
 
 # ─────────────────────────────────────────────────────────────
-# Konfigurácia
+# Configuration
 # ─────────────────────────────────────────────────────────────
 
 def load_config(path: str) -> dict:
@@ -66,7 +66,7 @@ def setup_logging(cfg: dict, verbose: bool):
 
 
 # ─────────────────────────────────────────────────────────────
-# Databáza
+# Database
 # ─────────────────────────────────────────────────────────────
 
 def db_connect(cfg: dict) -> pymysql.connections.Connection:
@@ -88,7 +88,7 @@ def db_connect(cfg: dict) -> pymysql.connections.Connection:
 
 
 def get_domains(conn, cfg: dict) -> list:
-    """Vráti všetky aktívne hlavné domény s info o zákazníkovi."""
+    """Return all active top-level domains with their customer info."""
     exclude_domains = set(cfg.get("exclude_domains") or [])
     exclude_customers = set(cfg.get("exclude_customers") or [])
     only_customers = set(cfg.get("include_only_customers") or [])
@@ -150,13 +150,13 @@ def get_customer_databases(conn, customerid: int) -> list:
 
 
 # ─────────────────────────────────────────────────────────────
-# Zálohovanie – web
+# Backup – web
 # ─────────────────────────────────────────────────────────────
 
 def backup_web(domain: dict, backup_dir: Path, cfg: dict) -> bool:
     docroot = domain["domain_docroot"] or ""
     if not docroot or docroot == "/":
-        # Froxlor predvolene: document_root_prefix / loginname / domain
+        # Froxlor default path: document_root_prefix / loginname / domain
         docroot = os.path.join(
             cfg["froxlor_paths"]["document_root_prefix"],
             domain["loginname"],
@@ -170,14 +170,14 @@ def backup_web(domain: dict, backup_dir: Path, cfg: dict) -> bool:
             )
 
     if not os.path.isdir(docroot):
-        LOG.warning("[%s] web docroot neexistuje: %s", domain["domain"], docroot)
+        LOG.warning("[%s] web docroot does not exist: %s", domain["domain"], docroot)
         return False
 
     web_dir = backup_dir / "web"
     web_dir.mkdir(parents=True, exist_ok=True)
     archive = web_dir / "web.tar.gz"
 
-    LOG.info("[%s] zálohujem web: %s → %s", domain["domain"], docroot, archive)
+    LOG.info("[%s] backing up web: %s → %s", domain["domain"], docroot, archive)
     result = subprocess.run(
         ["tar", "--create", "--gzip",
          "--file", str(archive),
@@ -186,23 +186,23 @@ def backup_web(domain: dict, backup_dir: Path, cfg: dict) -> bool:
          "."],
         capture_output=True, text=True
     )
-    # returncode 1 = niektoré súbory sa zmenili počas archivovanie (OK)
+    # returncode 1 = some files changed during archiving (OK)
     if result.returncode not in (0, 1):
-        LOG.error("[%s] tar web zlyhal (rc=%d): %s", domain["domain"], result.returncode, result.stderr[:500])
+        LOG.error("[%s] tar web failed (rc=%d): %s", domain["domain"], result.returncode, result.stderr[:500])
         return False
 
     size_mb = archive.stat().st_size / 1024 / 1024
-    LOG.info("[%s] web záloha hotová: %.1f MB", domain["domain"], size_mb)
+    LOG.info("[%s] web backup done: %.1f MB", domain["domain"], size_mb)
     return True
 
 
 # ─────────────────────────────────────────────────────────────
-# Zálohovanie – mail
+# Backup – mail
 # ─────────────────────────────────────────────────────────────
 
 def backup_mail(domain: dict, mail_accounts: list, backup_dir: Path) -> bool:
     if not mail_accounts:
-        LOG.debug("[%s] žiadne mailboxy", domain["domain"])
+        LOG.debug("[%s] no mailboxes", domain["domain"])
         return True
 
     mail_dir = backup_dir / "mail"
@@ -214,35 +214,35 @@ def backup_mail(domain: dict, mail_accounts: list, backup_dir: Path) -> bool:
         maildir = (account.get("maildir") or "").strip("/")
 
         if not homedir or not os.path.isdir(homedir):
-            LOG.warning("[%s] mail homedir neexistuje: %s (%s)", domain["domain"], homedir, account["email"])
+            LOG.warning("[%s] mail homedir does not exist: %s (%s)", domain["domain"], homedir, account["email"])
             continue
 
         safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", account["email"])
         archive = mail_dir / f"{safe_name}.tar.gz"
 
-        LOG.info("[%s] zálohujem mail: %s → %s", domain["domain"], account["email"], archive.name)
+        LOG.info("[%s] backing up mail: %s → %s", domain["domain"], account["email"], archive.name)
         result = subprocess.run(
             ["tar", "--create", "--gzip",
              "--file", str(archive),
              "--directory", homedir,
              "--one-file-system",
-             "--warning=no-file-changed",  # exit 1 pri zmene súboru je normálny stav pri živom Dovecot-e
+             "--warning=no-file-changed",  # exit 1 on changed file is normal with a live Dovecot
              f"./{maildir}"],
             capture_output=True, text=True
         )
         if result.returncode not in (0, 1):
-            LOG.error("[%s] tar mail zlyhal pre %s (rc=%d): %s",
+            LOG.error("[%s] tar mail failed for %s (rc=%d): %s",
                       domain["domain"], account["email"], result.returncode, result.stderr[:300])
             success = False
         else:
             size_mb = archive.stat().st_size / 1024 / 1024
-            LOG.info("[%s] mail záloha: %s  %.1f MB", domain["domain"], account["email"], size_mb)
+            LOG.info("[%s] mail backup: %s  %.1f MB", domain["domain"], account["email"], size_mb)
 
     return success
 
 
 # ─────────────────────────────────────────────────────────────
-# Zálohovanie – logy
+# Backup – logs
 # ─────────────────────────────────────────────────────────────
 
 def backup_logs(domain: dict, backup_dir: Path, cfg: dict) -> bool:
@@ -251,23 +251,23 @@ def backup_logs(domain: dict, backup_dir: Path, cfg: dict) -> bool:
     cust_logs = os.path.join(logs_base, domain["loginname"])
 
     if not os.path.isdir(cust_logs):
-        LOG.debug("[%s] adresár logov neexistuje: %s", domain["domain"], cust_logs)
+        LOG.debug("[%s] log directory does not exist: %s", domain["domain"], cust_logs)
         return True
 
-    # hľadáme súbory začínajúce názvom domény
+    # look for files starting with the domain name
     log_files = (
         glob.glob(os.path.join(cust_logs, f"{domain['domain']}-access*")) +
         glob.glob(os.path.join(cust_logs, f"{domain['domain']}-error*"))
     )
     if not log_files:
-        LOG.debug("[%s] žiadne log súbory", domain["domain"])
+        LOG.debug("[%s] no log files found", domain["domain"])
         return True
 
     logs_dir = backup_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     archive = logs_dir / "logs.tar.gz"
 
-    LOG.info("[%s] zálohujem logy: %d súborov", domain["domain"], len(log_files))
+    LOG.info("[%s] backing up logs: %d files", domain["domain"], len(log_files))
     result = subprocess.run(
         ["tar", "--create", "--gzip",
          "--file", str(archive),
@@ -276,15 +276,15 @@ def backup_logs(domain: dict, backup_dir: Path, cfg: dict) -> bool:
         capture_output=True, text=True
     )
     if result.returncode not in (0, 1):
-        LOG.error("[%s] tar logs zlyhal (rc=%d): %s", domain["domain"], result.returncode, result.stderr[:300])
+        LOG.error("[%s] tar logs failed (rc=%d): %s", domain["domain"], result.returncode, result.stderr[:300])
         return False
 
-    LOG.info("[%s] logs záloha hotová: %.1f MB", domain["domain"], archive.stat().st_size / 1024 / 1024)
+    LOG.info("[%s] logs backup done: %.1f MB", domain["domain"], archive.stat().st_size / 1024 / 1024)
     return True
 
 
 # ─────────────────────────────────────────────────────────────
-# Zálohovanie – databázy
+# Backup – databases
 # ─────────────────────────────────────────────────────────────
 
 def find_mysqldump() -> Optional[str]:
@@ -298,7 +298,7 @@ def get_db_root_credentials(cfg: dict, dbserver: int) -> Optional[dict]:
     servers = cfg.get("db_root_servers", {})
     srv = servers.get(dbserver) or servers.get(str(dbserver))
     if not srv:
-        LOG.error("Nenájdené prihlasovacie údaje pre dbserver=%d v config.yaml (db_root_servers)", dbserver)
+        LOG.error("No credentials found for dbserver=%d in config.yaml (db_root_servers)", dbserver)
         return None
     return srv
 
@@ -306,12 +306,12 @@ def get_db_root_credentials(cfg: dict, dbserver: int) -> Optional[dict]:
 def backup_databases(conn, customer: dict, backup_dir: Path, cfg: dict) -> bool:
     databases = get_customer_databases(conn, customer["customerid"])
     if not databases:
-        LOG.debug("[%s] žiadne databázy", customer["loginname"])
+        LOG.debug("[%s] no databases", customer["loginname"])
         return True
 
     mysqldump = find_mysqldump()
     if not mysqldump:
-        LOG.error("mysqldump/mariadb-dump neboli nájdené! Nainštaluj mysql-client / mariadb-client.")
+        LOG.error("mysqldump/mariadb-dump not found! Install mysql-client / mariadb-client.")
         return False
 
     db_dir = backup_dir / "databases"
@@ -346,15 +346,15 @@ def backup_databases(conn, customer: dict, backup_dir: Path, cfg: dict) -> bool:
                 current_dbserver = dbserver
 
             dump_file = db_dir / f"{db['databasename']}.sql.gz"
-            LOG.info("[%s] dump databázy: %s → %s", customer["loginname"], db["databasename"], dump_file.name)
+            LOG.info("[%s] dumping database: %s → %s", customer["loginname"], db["databasename"], dump_file.name)
 
             dump_cmd = [
                 mysqldump,
                 f"--defaults-file={mycnf_file}",
                 f"-u{srv['user']}",
-                "--single-transaction",   # konzistentný snímok pre InnoDB bez lockov
-                "--lock-tables=false",    # vypne automatický LOCK TABLES pre MyISAM
-                "--quick",                # streamuje riadok po riadku, nečaká na celý výsledok v RAM
+                "--single-transaction",   # consistent InnoDB snapshot without table locks
+                "--lock-tables=false",    # disable automatic LOCK TABLES for MyISAM
+                "--quick",                # stream row-by-row, don't buffer entire result in RAM
                 "--routines",
                 "--events",
                 db["databasename"],
@@ -368,13 +368,13 @@ def backup_databases(conn, customer: dict, backup_dir: Path, cfg: dict) -> bool:
                 _, dump_err = p1.communicate()
 
             if p1.returncode != 0:
-                LOG.error("[%s] mysqldump zlyhal pre %s (rc=%d): %s",
+                LOG.error("[%s] mysqldump failed for %s (rc=%d): %s",
                           customer["loginname"], db["databasename"], p1.returncode,
                           dump_err.decode(errors="replace")[:400])
                 success = False
             else:
                 size_mb = dump_file.stat().st_size / 1024 / 1024
-                LOG.info("[%s] db záloha: %s  %.1f MB", customer["loginname"], db["databasename"], size_mb)
+                LOG.info("[%s] db backup: %s  %.1f MB", customer["loginname"], db["databasename"], size_mb)
 
     finally:
         if mycnf_file and os.path.exists(mycnf_file):
@@ -403,7 +403,7 @@ def write_manifest(backup_dir: Path, info: dict, contents: list):
 
 
 # ─────────────────────────────────────────────────────────────
-# Prenos na vzdialené úložisko
+# Transfer to remote storage
 # ─────────────────────────────────────────────────────────────
 
 def transfer_rsync_ssh(local_dir: Path, remote_cfg: dict) -> bool:
@@ -419,13 +419,13 @@ def transfer_rsync_ssh(local_dir: Path, remote_cfg: dict) -> bool:
         ssh_opts += f" -i {key_file}"
 
     remote_dest = f"{user}@{host}:{remote_path}/"
-    LOG.info("Prenos na %s (rsync+SSH) ...", remote_dest)
+    LOG.info("Transferring to %s (rsync+SSH) ...", remote_dest)
 
     cmd = [
         "rsync",
         "--archive",           # -rlptgoD
         "--compress",
-        "--delete",            # zmaže staré zálohy podľa lokálnej retencie
+        "--delete",            # remove old backups according to local retention
         "--partial",
         "--human-readable",
         "--timeout=120",
@@ -437,9 +437,9 @@ def transfer_rsync_ssh(local_dir: Path, remote_cfg: dict) -> bool:
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        LOG.error("rsync zlyhal (rc=%d): %s", result.returncode, result.stderr[:600])
+        LOG.error("rsync failed (rc=%d): %s", result.returncode, result.stderr[:600])
         return False
-    LOG.info("rsync hotový.")
+    LOG.info("rsync done.")
     return True
 
 
@@ -450,7 +450,7 @@ def transfer_rclone(local_dir: Path, remote_cfg: dict) -> bool:
     extra_args = remote_cfg.get("rclone_extra_args") or []
 
     dest = f"{rclone_remote}:{remote_path}"
-    LOG.info("Prenos na %s (rclone) ...", dest)
+    LOG.info("Transferring to %s (rclone) ...", dest)
 
     cmd = ["rclone", "sync", "--progress", "--stats-one-line"]
     if config_file:
@@ -459,9 +459,9 @@ def transfer_rclone(local_dir: Path, remote_cfg: dict) -> bool:
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        LOG.error("rclone zlyhal (rc=%d): %s", result.returncode, result.stderr[:600])
+        LOG.error("rclone failed (rc=%d): %s", result.returncode, result.stderr[:600])
         return False
-    LOG.info("rclone hotový.")
+    LOG.info("rclone done.")
     return True
 
 
@@ -476,22 +476,22 @@ def transfer_to_remotes(local_dir: Path, cfg: dict) -> bool:
         elif remote["type"] == "rclone":
             ok = transfer_rclone(local_dir, remote) and ok
         else:
-            LOG.warning("Neznámy typ remote: %s", remote["type"])
+            LOG.warning("Unknown remote type: %s", remote["type"])
     return ok
 
 
 # ─────────────────────────────────────────────────────────────
-# Retencia
+# Retention
 # ─────────────────────────────────────────────────────────────
 
 def apply_retention(backup_base: Path, cfg: dict):
     """
-    Zachová:
-      - posledných retention.daily  denných záloh
-      - 1 záloha/týždeň, posledné retention.weekly  týždne
-      - 1 záloha/mesiac, posledných retention.monthly mesiacov
-    Ostatné adresáre (YYYY-MM-DD) zmaže.
-    Prebieha pre každý subdir backup_base (= každá doména / každý zákazník pre DB).
+    Keeps:
+      - the last retention.daily  daily backups
+      - 1 backup/week for the last retention.weekly  weeks
+      - 1 backup/month for the last retention.monthly months
+    All other YYYY-MM-DD directories are deleted.
+    Runs for every subdirectory of backup_base (= each domain / each customer DB dir).
     """
     ret = cfg.get("retention", {})
     keep_daily = int(ret.get("daily", 7))
@@ -504,7 +504,7 @@ def apply_retention(backup_base: Path, cfg: dict):
         if not entity_dir.is_dir():
             continue
 
-        # Zber dátumovaných podadresárov: YYYY-MM-DD
+        # Collect date-stamped subdirectories: YYYY-MM-DD
         dated = []
         for sub in entity_dir.iterdir():
             if re.match(r"^\d{4}-\d{2}-\d{2}$", sub.name):
@@ -517,14 +517,14 @@ def apply_retention(backup_base: Path, cfg: dict):
         if not dated:
             continue
 
-        dated.sort(reverse=True)  # najnovšie ako prvé
+        dated.sort(reverse=True)  # newest first
         keep = set()
 
-        # Daily: posledných N
+        # Daily: keep the last N
         for d, p in dated[:keep_daily]:
             keep.add(p)
 
-        # Weekly: posledných N týždňov – zachovaj najnovší záznam z každého týždňa
+        # Weekly: keep the newest entry from each of the last N weeks
         seen_weeks = {}
         for d, p in dated:
             iso_week = d.isocalendar()[:2]  # (year, week)
@@ -534,7 +534,7 @@ def apply_retention(backup_base: Path, cfg: dict):
         for d, p in weekly_sorted[:keep_weekly]:
             keep.add(p)
 
-        # Monthly: posledných N mesiacov – zachovaj najnovší záznam z každého mesiaca
+        # Monthly: keep the newest entry from each of the last N months
         seen_months = {}
         for d, p in dated:
             ym = (d.year, d.month)
@@ -544,15 +544,15 @@ def apply_retention(backup_base: Path, cfg: dict):
         for d, p in monthly_sorted[:keep_monthly]:
             keep.add(p)
 
-        # Zmaz čo nie je v keep
+        # Delete everything not in keep
         for d, p in dated:
             if p not in keep:
-                LOG.info("Retencia: mazem starú zálohu %s", p)
+                LOG.info("Retention: removing old backup %s", p)
                 shutil.rmtree(p)
 
 
 # ─────────────────────────────────────────────────────────────
-# Notifikácie
+# Notifications
 # ─────────────────────────────────────────────────────────────
 
 def send_notification(cfg: dict, subject: str, body: str):
@@ -577,24 +577,24 @@ def send_notification(cfg: dict, subject: str, body: str):
             smtp.login(ntf["smtp_user"], ntf["smtp_password"])
         smtp.send_message(msg)
         smtp.quit()
-        LOG.debug("Notifikačný email odoslaný na %s", ntf["email_to"])
+        LOG.debug("Notification email sent to %s", ntf["email_to"])
     except Exception as e:
-        LOG.error("Chyba pri odosielaní emailu: %s", e)
+        LOG.error("Failed to send notification email: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────
-# Hlavná logika zálohovania
+# Core backup logic
 # ─────────────────────────────────────────────────────────────
 
 def backup_domain(conn, domain: dict, backup_base: Path, cfg: dict, dry_run: bool) -> list:
-    """Zálohuj web + mail (+ voliteľne logy) pre jednu doménu. Vráti zoznam chýb."""
+    """Back up web + mail (+ optional logs) for one domain. Returns a list of errors."""
     date_str = datetime.date.today().isoformat()
     domain_slug = re.sub(r"[^a-zA-Z0-9._-]", "_", domain["domain"])
     backup_dir = backup_base / domain_slug / date_str
     errors = []
 
     if dry_run:
-        LOG.info("[DRY-RUN] by som zálohoval doménu %s → %s", domain["domain"], backup_dir)
+        LOG.info("[DRY-RUN] would back up domain %s → %s", domain["domain"], backup_dir)
         return errors
 
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -604,7 +604,7 @@ def backup_domain(conn, domain: dict, backup_base: Path, cfg: dict, dry_run: boo
         if backup_web(domain, backup_dir, cfg):
             contents.append("web")
         else:
-            errors.append(f"{domain['domain']}: web backup zlyhal")
+            errors.append(f"{domain['domain']}: web backup failed")
 
     if cfg["backup"].get("mail", True) and domain.get("isemaildomain"):
         mail_accounts = get_domain_mail_accounts(conn, domain["domain_id"])
@@ -612,7 +612,7 @@ def backup_domain(conn, domain: dict, backup_base: Path, cfg: dict, dry_run: boo
             if mail_accounts:
                 contents.append("mail")
         else:
-            errors.append(f"{domain['domain']}: mail backup zlyhal")
+            errors.append(f"{domain['domain']}: mail backup failed")
 
     if cfg["backup"].get("logs", False):
         if backup_logs(domain, backup_dir, cfg):
@@ -621,35 +621,35 @@ def backup_domain(conn, domain: dict, backup_base: Path, cfg: dict, dry_run: boo
     write_manifest(backup_dir, domain, contents)
 
     if contents:
-        LOG.info("[%s] záloha dokončená: %s", domain["domain"], ", ".join(contents))
+        LOG.info("[%s] backup complete: %s", domain["domain"], ", ".join(contents))
     else:
-        LOG.warning("[%s] záloha prázdna (žiadne súbory)", domain["domain"])
+        LOG.warning("[%s] backup is empty (no files)", domain["domain"])
         shutil.rmtree(backup_dir, ignore_errors=True)
 
     return errors
 
 
 def backup_customer_databases(conn, customer: dict, backup_base: Path, cfg: dict, dry_run: bool) -> list:
-    """Zálohuj všetky DB zákazníka. Vráti zoznam chýb."""
+    """Back up all databases for a customer. Returns a list of errors."""
     date_str = datetime.date.today().isoformat()
     slug = f"_db_{customer['loginname']}"
     backup_dir = backup_base / slug / date_str
     errors = []
 
     if dry_run:
-        LOG.info("[DRY-RUN] by som zálohoval DB zákazníka %s → %s", customer["loginname"], backup_dir)
+        LOG.info("[DRY-RUN] would back up databases for customer %s → %s", customer["loginname"], backup_dir)
         return errors
 
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     if not backup_databases(conn, customer, backup_dir, cfg):
-        errors.append(f"{customer['loginname']}: DB backup zlyhal (čiastočne alebo úplne)")
+        errors.append(f"{customer['loginname']}: DB backup failed (partially or completely)")
 
-    # Skontroluj či je aspoň niečo
+    # Check if anything was actually written
     db_dir = backup_dir / "databases"
     if db_dir.exists() and any(db_dir.iterdir()):
         write_manifest(backup_dir, customer, ["databases"])
-        LOG.info("[%s] DB záloha dokončená", customer["loginname"])
+        LOG.info("[%s] DB backup complete", customer["loginname"])
     else:
         shutil.rmtree(backup_dir, ignore_errors=True)
 
@@ -662,18 +662,18 @@ def backup_customer_databases(conn, customer: dict, backup_base: Path, cfg: dict
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="froxlor-backup – automatické zálohovanie per-domain/per-customer"
+        description="froxlor-backup – automatic per-domain/per-customer backup"
     )
     p.add_argument("--config", default="/etc/froxlor-backup/config.yaml",
-                   help="Cesta ku konfiguračnému súboru")
-    p.add_argument("--domain",    help="Zálohuj iba túto doménu (napr. example.com)")
-    p.add_argument("--customer",  help="Zálohuj iba tohto zákazníka (loginname)")
+                   help="Path to the configuration file")
+    p.add_argument("--domain",    help="Back up only this domain (e.g. example.com)")
+    p.add_argument("--customer",  help="Back up only this customer (loginname)")
     p.add_argument("--skip-transfer", action="store_true",
-                   help="Nevykonávaj prenos na vzdialené úložisko")
+                   help="Do not transfer to remote storage")
     p.add_argument("--skip-retention", action="store_true",
-                   help="Neaplikuj retenčnú politiku")
+                   help="Do not apply retention policy")
     p.add_argument("--dry-run", action="store_true",
-                   help="Iba vypíš čo by sa zálohovalo, nič neukladaj")
+                   help="Show what would be backed up without writing anything")
     p.add_argument("--verbose", "-v", action="store_true")
     return p.parse_args()
 
@@ -685,13 +685,13 @@ def main():
 
     LOG.info("═══ froxlor-backup %s ═══", VERSION)
     if args.dry_run:
-        LOG.info("MODE: DRY-RUN – žiadne zmeny na disku")
+        LOG.info("MODE: DRY-RUN – no changes will be written to disk")
 
     backup_base = Path(cfg.get("local_backup_dir", "/var/backups/froxlor-backup"))
     backup_base.mkdir(parents=True, exist_ok=True)
 
     conn = db_connect(cfg)
-    LOG.info("Pripojený k Froxlor DB.")
+    LOG.info("Connected to Froxlor DB.")
 
     domains = get_domains(conn, cfg)
     if args.domain:
@@ -699,7 +699,7 @@ def main():
     if args.customer:
         domains = [d for d in domains if d["loginname"] == args.customer]
 
-    LOG.info("Domén na zálohovanie: %d", len(domains))
+    LOG.info("Domains to back up: %d", len(domains))
 
     all_errors = []
     backed_customers = set()
@@ -709,11 +709,11 @@ def main():
             errs = backup_domain(conn, domain, backup_base, cfg, args.dry_run)
             all_errors.extend(errs)
         except Exception as e:
-            msg = f"{domain['domain']}: neočakávaná chyba – {e}"
+            msg = f"{domain['domain']}: unexpected error – {e}"
             LOG.exception(msg)
             all_errors.append(msg)
 
-        # Databázy – raz za zákazníka
+        # Databases – once per customer
         if cfg["backup"].get("databases", True):
             cid = domain["customerid"]
             if cid not in backed_customers:
@@ -722,38 +722,38 @@ def main():
                     errs = backup_customer_databases(conn, domain, backup_base, cfg, args.dry_run)
                     all_errors.extend(errs)
                 except Exception as e:
-                    msg = f"{domain['loginname']} (DB): neočakávaná chyba – {e}"
+                    msg = f"{domain['loginname']} (DB): unexpected error – {e}"
                     LOG.exception(msg)
                     all_errors.append(msg)
 
     conn.close()
 
-    # Retencia
+    # Retention
     if not args.skip_retention and not args.dry_run:
-        LOG.info("Aplikujem retenčnú politiku ...")
+        LOG.info("Applying retention policy ...")
         apply_retention(backup_base, cfg)
 
-    # Prenos
+    # Transfer
     transfer_ok = True
     if not args.skip_transfer and not args.dry_run:
-        LOG.info("Prenos na vzdialené úložisko ...")
+        LOG.info("Transferring to remote storage ...")
         transfer_ok = transfer_to_remotes(backup_base, cfg)
         if not transfer_ok:
-            all_errors.append("Prenos na remote zlyhal")
+            all_errors.append("Transfer to remote failed")
 
-    # Súhrn
+    # Summary
     if all_errors:
-        summary = "Zálohovanie dokončené S CHYBAMI:\n" + "\n".join(f"  • {e}" for e in all_errors)
+        summary = "Backup completed WITH ERRORS:\n" + "\n".join(f"  • {e}" for e in all_errors)
         LOG.error(summary)
         ntf_cfg = cfg.get("notifications", {})
         if ntf_cfg.get("on_error"):
-            send_notification(cfg, "CHYBA pri zálohe", summary)
+            send_notification(cfg, "Backup ERROR", summary)
         sys.exit(1)
     else:
-        LOG.info("Zálohovanie úspešne dokončené.")
+        LOG.info("Backup completed successfully.")
         ntf_cfg = cfg.get("notifications", {})
         if ntf_cfg.get("on_success"):
-            send_notification(cfg, "Záloha úspešná", f"Zálohovaných domén: {len(domains)}")
+            send_notification(cfg, "Backup successful", f"Domains backed up: {len(domains)}")
         sys.exit(0)
 
 
