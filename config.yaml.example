@@ -1,0 +1,103 @@
+# ============================================================
+# froxlor-backup - konfigurácia
+# Skopíruj na /etc/froxlor-backup/config.yaml a uprav hodnoty
+# ============================================================
+
+# --- Froxlor databáza (neprivilegovaný používateľ, read-only stačí) ---
+froxlor_db:
+  host: localhost
+  port: 3306
+  socket: null            # alternatíva k host+port, napr. /var/run/mysqld/mysqld.sock
+  user: froxlor           # viď /var/www/froxlor/lib/userdata.inc.php  ($sql['user'])
+  password: "tajneheslo"  # viď userdata.inc.php ($sql['password'])
+  name: froxlor           # viď userdata.inc.php ($sql['db'])
+
+# --- Root prístup k MySQL serverom (pre mysqldump)
+# Froxlor ukladá tieto údaje v /var/www/froxlor/lib/userdata.inc.php
+# v poli $sql_root[0], $sql_root[1], ...
+# Index musí zodpovedať číslu dbserver v panel_databases
+db_root_servers:
+  0:                             # dbserver=0 (default)
+    host: localhost
+    port: 3306
+    socket: null
+    user: root
+    password: "root_heslo"
+  # 1:                           # ďalší MySQL server (ak máš viac)
+  #   host: db2.internal
+  #   port: 3306
+  #   user: root
+  #   password: "heslo2"
+
+# --- Froxlor cesty (musí zodpovedať nastaveniu v Froxlor admin paneli)
+# Admin → Settings → System → Paths
+froxlor_paths:
+  document_root_prefix: /var/customers/webs   # system.documentroot_prefix
+  mail_home_dir: /var/customers/mail           # system.vmail_homedir
+  logs_dir: /var/customers/logs                # system.logfiles_directory
+
+# --- Čo zálohovať ---
+backup:
+  web: true           # súbory z documentroot domény
+  mail: true          # mailboxy (per domaina podľa mail_users.domainid)
+  databases: true     # SQL dump všetkých DB zákazníka
+  logs: false         # access/error logy (zvyčajne zbytočné zálohovať)
+
+# --- Lokálny adresár na zálohy (staging) ---
+local_backup_dir: /var/backups/froxlor-backup
+
+# --- Domény/zákazníci na preskočenie ---
+exclude_domains: []          # napr. ["test.example.com", "dev.example.com"]
+exclude_customers: []        # napr. ["web1", "web2"]
+include_only_customers: []   # ak neprázdne, zálohuje IBA týchto zákazníkov
+
+# --- Vzdialené úložiská ---
+# Môžeš definovať viac - všetky enabled:true sa použijú
+remotes:
+  - name: backup-ssh
+    type: rsync_ssh
+    enabled: true
+    host: backup.example.com
+    port: 22
+    user: backupuser
+    key_file: /root/.ssh/froxlor_backup_rsa
+    path: /mnt/backups/froxlor
+    # Voliteľné rsync flagy navyše
+    rsync_extra_args: ["--bwlimit=50000"]    # 50 MB/s throttle
+
+  - name: s3-wasabi
+    type: rclone
+    enabled: false
+    rclone_remote: wasabi                    # meno z rclone config
+    path: moj-bucket/froxlor-backups
+    rclone_config: /root/.config/rclone/rclone.conf   # voliteľné
+    rclone_extra_args: ["--transfers=4"]
+
+  # - name: hetzner-sftp
+  #   type: rclone
+  #   enabled: false
+  #   rclone_remote: hetzner-sftp
+  #   path: froxlor-backups
+
+# --- Retencia (v lokálnom adresári; rsync potom zmaže aj na remote) ---
+retention:
+  daily: 7       # posledných 7 dní
+  weekly: 4      # 1 záloha/týždeň, posledné 4 týždne
+  monthly: 6     # 1 záloha/mesiac, posledných 6 mesiacov
+
+# --- Notifikácie ---
+notifications:
+  enabled: false
+  email_to: admin@example.com
+  email_from: froxlor-backup@example.com
+  smtp_host: localhost
+  smtp_port: 25
+  smtp_user: null
+  smtp_password: null
+  smtp_tls: false
+  on_error: true     # pošli mail pri chybe
+  on_success: false  # pošli mail po úspešnej zálohe
+
+# --- Logovanie ---
+log_file: /var/log/froxlor-backup.log
+log_level: INFO    # DEBUG / INFO / WARNING / ERROR

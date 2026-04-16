@@ -1,0 +1,17 @@
+[Unit]
+Description=Froxlor automatic backup
+After=network.target mysql.service mariadb.service
+Wants=mysql.service mariadb.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/froxlor-backup/froxlor-backup.py --config /etc/froxlor-backup/config.yaml
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=froxlor-backup
+
+# Bezpečnostné obmedzenia
+NoNewPrivileges=no
+PrivateTmp=yes
+ProtectSystem=no

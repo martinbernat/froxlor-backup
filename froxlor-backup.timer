@@ -1,0 +1,13 @@
+[Unit]
+Description=Froxlor automatic backup – spúšťa sa každú noc o 02:30
+Requires=froxlor-backup.service
+
+[Timer]
+# Každú noc o 02:30 (mierne náhodné oneskorenie 0–15 min, aby sa neprekrývali zálohy na zdieľaných serveroch)
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=900
+Persistent=true
+Unit=froxlor-backup.service
+
+[Install]
+WantedBy=timers.target
