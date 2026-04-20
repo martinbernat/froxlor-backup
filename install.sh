@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
-# froxlor-backup - inštalačný skript
-# Spusti ako root: sudo bash install.sh
+# froxlor-backup - installation script
+# Run as root: sudo bash install.sh
 # ============================================================
 set -euo pipefail
 
@@ -11,11 +11,11 @@ LOG_FILE="/var/log/froxlor-backup.log"
 BACKUP_DIR="/var/backups/froxlor-backup"
 SSH_KEY="/root/.ssh/froxlor_backup_ed25519"
 
-# ── Pomocné funkcie ──────────────────────────────────────────
+# ── Helper functions ─────────────────────────────────────────
 
 secure_dir() {
-    # secure_dir <cesta> <owner:group> <perms>
-    # Vytvorí adresár ak neexistuje, vždy nastaví owner + perms.
+    # secure_dir <path> <owner:group> <perms>
+    # Creates directory if it does not exist, always sets owner + perms.
     local path="$1" owner="$2" mode="$3"
     mkdir -p "$path"
     chown "$owner" "$path"
@@ -23,39 +23,39 @@ secure_dir() {
 }
 
 secure_file() {
-    # secure_file <cesta> <owner:group> <perms>
+    # secure_file <path> <owner:group> <perms>
     local path="$1" owner="$2" mode="$3"
     chown "$owner" "$path"
     chmod "$mode"  "$path"
 }
 
-# ── Hlavný skript ────────────────────────────────────────────
+# ── Main script ──────────────────────────────────────────────
 
 echo "╔══════════════════════════════════════╗"
-echo "║  froxlor-backup inštalácia           ║"
+echo "║  froxlor-backup installation         ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
-# Kontrola root
+# Check root
 if [[ $EUID -ne 0 ]]; then
-    echo "CHYBA: Spusti skript ako root (sudo bash install.sh)"
+    echo "ERROR: Run the script as root (sudo bash install.sh)"
     exit 1
 fi
 
-# ── 1. Závislosti ──
-echo "→ Inštalácia Python závislostí ..."
+# ── 1. Dependencies ──
+echo "→ Installing Python dependencies ..."
 if command -v pip3 &>/dev/null; then
     pip3 install --quiet PyMySQL PyYAML
 elif command -v pip &>/dev/null; then
     pip install --quiet PyMySQL PyYAML
 else
-    echo "  VAROVANIE: pip nenájdený, nainštaluj ručne: pip3 install PyMySQL PyYAML"
+    echo "  WARNING: pip not found, install manually: pip3 install PyMySQL PyYAML"
 fi
 
-# ── 2. Skripty ──
-# Adresár čitateľný/spustiteľný len rootom - skripty neobsahujú credentials,
-# ale nie je dôvod aby ich čítal ktokoľvek iný.
-echo "→ Kopírujem skripty do ${INSTALL_DIR} ..."
+# ── 2. Scripts ──
+# Directory readable/executable by root only - scripts do not contain credentials,
+# but there is no reason for anyone else to read them.
+echo "→ Copying scripts to ${INSTALL_DIR} ..."
 secure_dir "$INSTALL_DIR" root:root 700
 
 cp froxlor-backup.py       "$INSTALL_DIR/"
@@ -64,17 +64,17 @@ cp config.yaml.example     "$INSTALL_DIR/"
 
 secure_file "$INSTALL_DIR/froxlor-backup.py"   root:root 700
 secure_file "$INSTALL_DIR/froxlor-restore.py"  root:root 700
-secure_file "$INSTALL_DIR/config.yaml.example" root:root 640  # čitateľný root-om, skupina nepotrebuje
+secure_file "$INSTALL_DIR/config.yaml.example" root:root 640  # readable by root, group does not need access
 
-# Symlinky v /usr/local/bin - samotný symlink nemá vlastné perms,
-# bezpečnosť je daná targetom (700 vyššie).
+# Symlinks in /usr/local/bin - the symlink itself has no own perms,
+# security is determined by the target (700 above).
 ln -sf "$INSTALL_DIR/froxlor-backup.py"  /usr/local/bin/froxlor-backup
 ln -sf "$INSTALL_DIR/froxlor-restore.py" /usr/local/bin/froxlor-restore
 
-# ── 3. Konfigurácia ──
-# /etc/froxlor-backup/  →  root:root 700  (iní používatelia adresár ani nevidia)
-# config.yaml           →  root:root 600  (credentials pre DB + remote - len root)
-echo "→ Konfiguračný adresár: ${CONFIG_DIR} ..."
+# ── 3. Configuration ──
+# /etc/froxlor-backup/  →  root:root 700  (other users cannot even see the directory)
+# config.yaml           →  root:root 600  (DB + remote credentials - root only)
+echo "→ Configuration directory: ${CONFIG_DIR} ..."
 secure_dir "$CONFIG_DIR" root:root 700
 
 if [[ ! -f "${CONFIG_DIR}/config.yaml" ]]; then
@@ -82,57 +82,57 @@ if [[ ! -f "${CONFIG_DIR}/config.yaml" ]]; then
     secure_file "${CONFIG_DIR}/config.yaml" root:root 600
     echo ""
     echo "  ┌─────────────────────────────────────────────────────┐"
-    echo "  │  DÔLEŽITÉ: Uprav konfiguráciu pred spustením!       │"
+    echo "  │  IMPORTANT: Edit configuration before running!      │"
     echo "  │  nano ${CONFIG_DIR}/config.yaml                     │"
     echo "  └─────────────────────────────────────────────────────┘"
     echo ""
 else
-    # Aj pri reinštalácii oprav perms - config mohol zostať so zlými právami
+    # On reinstall fix any bad perms - config may have been left with incorrect permissions
     secure_file "${CONFIG_DIR}/config.yaml" root:root 600
-    echo "  Konfigurácia už existuje, perms opravené (600 root:root)."
+    echo "  Configuration already exists, perms fixed (600 root:root)."
 fi
 
-# ── 4. Zálohovací adresár ──
-# 700 root:root - zálohy môžu obsahovať citlivé dáta zákazníkov
-echo "→ Zálohovací adresár: ${BACKUP_DIR} ..."
+# ── 4. Backup directory ──
+# 700 root:root - backups may contain sensitive customer data
+echo "→ Backup directory: ${BACKUP_DIR} ..."
 secure_dir "$BACKUP_DIR" root:root 700
 
-# ── 5. Log súbor ──
-# 600 root:root - logy môžu obsahovať názvy domén, cesty, chybové hlášky s DB menami
+# ── 5. Log file ──
+# 600 root:root - logs may contain domain names, paths, error messages with DB names
 touch "$LOG_FILE"
 secure_file "$LOG_FILE" root:root 600
 
-# ── 6. SSH kľúč pre backup server ──
-# /root/.ssh musí byť 700 (SSH to inak odmietne použiť)
-# Privátny kľúč musí byť 600 - SSH to vyžaduje a odmietne 640/644
+# ── 6. SSH key for backup server ──
+# /root/.ssh must be 700 (SSH will refuse to use it otherwise)
+# Private key must be 600 - SSH requires it and will reject 640/644
 secure_dir /root/.ssh root:root 700
 
 if [[ ! -f "${SSH_KEY}" ]]; then
-    echo "→ Generujem SSH kľúč (ed25519) pre backup server ..."
+    echo "→ Generating SSH key (ed25519) for backup server ..."
     ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" -C "froxlor-backup@$(hostname -f 2>/dev/null || hostname)"
-    # ssh-keygen nastavuje 600 automaticky, ale explicitne pre istotu:
+    # ssh-keygen sets 600 automatically, but explicit for safety:
     secure_file "${SSH_KEY}"       root:root 600
     secure_file "${SSH_KEY}.pub"   root:root 644
     echo ""
-    echo "  Skopíruj verejný kľúč na backup server:"
+    echo "  Copy the public key to the backup server:"
     echo "  ─────────────────────────────────────────────────────"
     cat "${SSH_KEY}.pub"
     echo "  ─────────────────────────────────────────────────────"
-    echo "  Príkaz: ssh-copy-id -i ${SSH_KEY} backupuser@backup.server.com"
-    echo "  Nezabudni v config.yaml nastaviť: key_file: ${SSH_KEY}"
+    echo "  Command: ssh-copy-id -i ${SSH_KEY} backupuser@backup.server.com"
+    echo "  Remember to set in config.yaml: key_file: ${SSH_KEY}"
     echo ""
 else
-    # Reinštalácia - oprav prípadné zlé perms existujúceho kľúča
+    # Reinstall - fix any bad perms on existing key
     secure_file "${SSH_KEY}"     root:root 600
     secure_file "${SSH_KEY}.pub" root:root 644
-    echo "→ SSH kľúč už existuje: ${SSH_KEY}  (perms opravené)"
+    echo "→ SSH key already exists: ${SSH_KEY}  (perms fixed)"
 fi
 
-# ── 7. Systemd jednotky ──
-# Service + timer súbory: 644 root:root
-# systemd ich číta ako root, ale číta ich aj systemd-analyze bežiaci ako bežný user -
-# 644 je štandard pre /etc/systemd/system/*.
-echo "→ Inštalácia systemd timera ..."
+# ── 7. Systemd units ──
+# Service + timer files: 644 root:root
+# systemd reads them as root, but also read by systemd-analyze running as regular user -
+# 644 is the standard for /etc/systemd/system/*.
+echo "→ Installing systemd timer ..."
 cp froxlor-backup.service /etc/systemd/system/
 cp froxlor-backup.timer   /etc/systemd/system/
 secure_file /etc/systemd/system/froxlor-backup.service root:root 644
@@ -141,14 +141,14 @@ secure_file /etc/systemd/system/froxlor-backup.timer   root:root 644
 systemd-analyze verify /etc/systemd/system/froxlor-backup.service 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable froxlor-backup.timer
-echo "  Timer zapnutý (spustí sa o 02:30 každú noc)."
-echo "  Manuálne spustenie: systemctl start froxlor-backup.service"
+echo "  Timer enabled (will run at 02:30 every night)."
+echo "  Manual run: systemctl start froxlor-backup.service"
 
-# ── 8. Výpis súhrnu permissions ──
+# ── 8. Permissions summary ──
 echo ""
-echo "→ Nastavené permissions:"
+echo "→ Configured permissions:"
 echo ""
-printf "  %-45s %s\n" "Súbor/adresár" "owner:group  perms"
+printf "  %-45s %s\n" "File/directory" "owner:group  perms"
 printf "  %-45s %s\n" "─────────────────────────────────────────────" "─────────────────────"
 for path in \
     "$INSTALL_DIR" \
@@ -169,16 +169,16 @@ do
     fi
 done
 
-# ── Hotovo ──
+# ── Done ──
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Inštalácia dokončená!                                   ║"
+echo "║  Installation complete!                                  ║"
 echo "╠══════════════════════════════════════════════════════════╣"
-echo "║  Nasledujúce kroky:                                      ║"
-echo "║  1. Uprav konfiguráciu:                                  ║"
+echo "║  Next steps:                                             ║"
+echo "║  1. Edit configuration:                                  ║"
 echo "║     nano /etc/froxlor-backup/config.yaml                 ║"
-echo "║  2. Testuj:  froxlor-backup --dry-run --verbose          ║"
-echo "║  3. Spusti:  froxlor-backup --verbose                    ║"
-echo "║  4. Zálohy:  froxlor-restore --list                      ║"
-echo "║  5. Obnova:  froxlor-restore                             ║"
+echo "║  2. Test:    froxlor-backup --dry-run --verbose          ║"
+echo "║  3. Run:     froxlor-backup --verbose                    ║"
+echo "║  4. Backups: froxlor-restore --list                      ║"
+echo "║  5. Restore: froxlor-restore                             ║"
 echo "╚══════════════════════════════════════════════════════════╝"
